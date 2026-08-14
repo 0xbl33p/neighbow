@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="nyantocat.png" width="220" alt="rainbow cat vibes">
+</p>
+
 # NEIGHBOW 🦄🌈
 
 *ride your own rainbow*
