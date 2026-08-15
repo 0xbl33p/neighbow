@@ -119,7 +119,7 @@ let runPh = 0, hoofFlip = 0, stars = 0, combo = 0, score = 0, shake = 0, deathT 
 let best = +(LS.nb_best || 0);
 let isl = [], star = [], cloud = [], tr = [], pp = [], pop = [];
 let genX = 0, strokeId = 0, emitX = 0, flashT = 0, newBest = 0, starBank = 0;
-let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0, rideFlash = 0;
+let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0, rideFlash = 0, runway = 0, runY = 0, lay = 0, lastW = 0;
 
 const FLY_DRAIN = 30, GRASS_REGEN = 26, RIDE_REGEN = 10, STAR_METER = 14;
 const FADE = 1.2, TRAIL_W = 17;
@@ -197,7 +197,7 @@ const reset = () => {
   px = 140; py = 250 + 340 * 0.19 + Math.sin(140 * 0.012) * 10; pyPrev = py; vy = 0;
   meter = 100; hold = 0; air = 0; ride = 1; rideI = 0; stun = 0; ang = 0;
   stars = 0; combo = 0; score = 0; shake = 0; mile = 0; newBest = 0; starBank = 0;
-  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0; rideFlash = 0;
+  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0; rideFlash = 0; runway = 0; runY = 0; lay = 0;
 };
 reset();
 
@@ -253,34 +253,42 @@ const update = dt => {
   // difficulty / speed
   spd = 250 + Math.min(190, dist * 0.011);
   SD = 4.5 - Math.min(1.8, dist * 0.00004); // ribbons dry up faster the deeper you go
-  const mv = spd * (ride ? 1.12 : 1) * dt; // riding the rainbow is faster than running
+  const mv = spd * (ride || lay ? 1.12 : 1) * dt; // riding the rainbow is faster than running
   rideFlash = Math.max(0, rideFlash - dt * 5);
   stun = Math.max(0, stun - dt);
   flashT = Math.max(0, flashT - dt);
 
-  // --- flight / gravity ---
-  const flying = hold && meter > 0 && !stun;
+  // --- cast & ride: hold = gallop up the rainbow your horn lays beneath you ---
+  const climbing = hold && meter > 0 && !stun;
   pyPrev = py;
-  if (flying) {
-    vy = lerp(vy, -235, 1 - Math.exp(-7 * dt));
-    meter -= FLY_DRAIN * dt;
-    if (!air && !ride) { air = 1; slid = 0; noise(0.14, 0.1, 2300, 1); }  // lift off
-    if (ride) { ride = 0; air = 1; slid = 0; noise(0.14, 0.1, 2300, 1); }
-    // the horn beams a rainbow into the sky AHEAD of you
-    if (px - emitX > 12) {
-      emitX = px;
-      tr.push({ x: px + 156, y: py - 26, t: T, s: strokeId });
-      // magic stream from horn to the paint head
-      for (let k = 0; k < 2; k++) {
-        const bt = rnd();
-        pp.push({ x: lerp(px + 26, px + 148, bt), y: lerp(py - 46, py - 26, bt) + rnd(5, -5), vx: rnd(30, -10), vy: rnd(-20, -50), l: 0.3, m: 0, col: RB[rnd(6) | 0], sz: 2 });
-      }
+  if (climbing) {
+    if (!lay) { // a fresh cast begins at the hooves — hop clear of the grass
+      lay = 1; ride = 0; air = 0; slid = 0;
+      py -= 8; vy = Math.min(vy, -80);
+      strokeId++; emitX = px - 13;
+      if (T - lastW > 0.3) { lastW = T; noise(0.14, 0.1, 2300, 1); }
     }
-  } else {
-    // any non-painting frame breaks the stroke — resuming must never bridge the gap
-    strokeId++; emitX = px - 999;
-    if (air) vy = Math.min(vy + 950 * dt, 560);
+    vy = lerp(vy, -235, 1 - Math.exp(-7 * dt));
+    py += vy * dt;
+    meter -= FLY_DRAIN * dt;
+  } else if (lay) {
+    if (runway > 0) { vy = 0; py = runY; meter = Math.min(100, meter + RIDE_REGEN * dt); } // coasting the level finish
+    else { lay = 0; air = 1; vy = 0; } // the rainbow ends beneath you
   }
+  // lay the ribbon just ahead of the front hooves
+  if (lay && px - emitX > 12) {
+    emitX = px;
+    tr.push({ x: px + 30, y: py + 2, t: T, s: strokeId });
+    if (climbing) { runway = 380; runY = py; } // releasing coasts level from here
+    else runway -= 12;
+    // magic stream from horn down to the road's leading edge
+    for (let k = 0; k < 2; k++) {
+      const bt = rnd();
+      pp.push({ x: px + 24 + rnd(12, -4), y: lerp(py - 46, py + 2, bt) + rnd(5, -5), vx: rnd(30, -10), vy: rnd(-20, -50), l: 0.3, m: 0, col: RB[rnd(6) | 0], sz: 2 });
+    }
+  }
+  if (!lay && !climbing && runway <= 0) { strokeId++; emitX = px - 999; } // sealed stroke never bridges
+  if (air) vy = Math.min(vy + 950 * dt, 560);
   if (meter <= 0) {
     meter = 0;
     if (hold && !mEmpty) { // ran dry mid-flight — tell the player loudly
@@ -295,20 +303,25 @@ const update = dt => {
   const px0 = px;
   const nx = px + mv;
   const wallIsl = islandAt(nx);
-  if (ride) {
-    px = nx;
-    if (wallIsl) {
-      const gy = gY(wallIsl, px);
+  if (ride || lay) {
+    const gy = wallIsl ? gY(wallIsl, nx) : 9e9;
+    if (py > gy + 40) {
+      // rode straight into a cliff face — the cast fizzles
+      ride = 0; lay = 0; runway = 0; strokeId++; emitX = px - 999; air = 1;
+      vy = Math.min(vy + 950 * dt, 560); py += vy * dt;
+      if (!slid) { slid = 1; stun = 0.4; shake = 8; noise(0.15, 0.25, 300, 1); }
+    } else {
+      px = nx;
       if (py > gy - 6) {
         // the ribbon carried us onto grass — step off
-        ride = 0; air = 0; py = gy; vy = 0; slid = 0; landT = T;
+        ride = 0; lay = 0; air = 0; py = gy; vy = 0; slid = 0; landT = T; runway = 0;
         if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
         combo = 0;
       }
     }
   } else if (wallIsl && !air) {
     // grounded: just follow terrain
-    px = nx; py = gY(wallIsl, px); slid = 0;
+    px = nx; py = gY(wallIsl, px); slid = 0; runway = 0;
     meter = Math.min(100, meter + GRASS_REGEN * dt);
     if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
     combo = 0;
@@ -322,7 +335,7 @@ const update = dt => {
     } else if (py > gy - 8 && vy >= 0) {
       // touch down on grass (with a forgiving ledge boost)
       px = nx; py = gy; vy = 0;
-      air = 0; slid = 0; landT = T;
+      air = 0; slid = 0; landT = T; runway = 0;
       puff(px, py, 8, "#cfe8ff", 70, 40, 3, 0.4);
       noise(0.09, 0.18, 900, 1);
       if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
@@ -334,7 +347,7 @@ const update = dt => {
     // over a gap
     px = nx;
     if (!air) { air = 1; vy = Math.max(vy, 0); }
-    py += vy * dt;
+    if (air) py += vy * dt;
   }
   py = Math.max(py, 46);
   if (py > VH + 70) { die(); return; }
@@ -364,7 +377,7 @@ const update = dt => {
       ride = 0; air = 1;
       vy = b != a ? clamp((b.y - a.y) / Math.max(0.01, (b.x - a.x)) * spd, -430, 430) : 0;
     }
-  } else if (air && vy > 30 && !flying) {
+  } else if (air && vy > 30 && !climbing) {
     // falling: can we land on a painted rainbow?
     for (let i = tr.length - 1; i > 0; i--) {
       const a = tr[i - 1], b = tr[i];
@@ -391,7 +404,7 @@ const update = dt => {
     runPh += dt * spd * 0.045;
     if ((old % PI) > (runPh % PI)) {
       hoofFlip ^= 1;
-      if (ride) {
+      if (ride || lay) {
         // hooves on rainbow ring like glass
         tone(1250 + hoofFlip * 260, 0.1, "sine", 0.07);
         rideFlash = 1;
@@ -423,7 +436,7 @@ const update = dt => {
     if (d2 < 1100) {
       s.got = 1; stars++;
       combo++;
-      const pts = 10 * combo * (ride ? 2 : 1);
+      const pts = 10 * combo * (ride || lay ? 2 : 1);
       starBank += pts;
       meter = Math.min(100, meter + STAR_METER);
       puff(s.x, sy, 8, "#ffe74c", 130, 40, 3, 0.5);
@@ -441,7 +454,8 @@ const update = dt => {
     if (dx * dx + dy2 * dy2 < 1 && !c.cd) {
       c.cd = 1.4; stun = 0.45; flashT = 0.25;
       meter = Math.max(0, meter - 35);
-      vy = Math.max(vy, 160); air = 1; ride = 0;
+      vy = Math.max(vy, 160); air = 1; ride = 0; lay = 0;
+      runway = 0; strokeId++; emitX = px - 999; // the zap snuffs the cast
       combo = 0;
       shake = 12;
       puff(px, py - 26, 14, "#ffe74c", 200, 0, 3, 0.4);
@@ -470,7 +484,8 @@ const update = dt => {
 
   // body angle
   let target = 0;
-  if (!air && !ride) {
+  if (lay) target = clamp(vy * 0.0012, -0.38, 0.3);
+  else if (!air && !ride) {
     const a = islandAt(px);
     if (a) target = Math.atan2(gY(a, px + 24) - gY(a, px - 24), 48);
   } else if (air) target = clamp(vy * 0.0009, -0.32, 0.42);
@@ -535,7 +550,8 @@ const drawUni = (x, y, a, galloping, flying) => {
   X.translate(0, bob);
 
   // tail — rainbow ribbons (streams harder while riding)
-  const tw = Math.sin(T * (ride ? 11 : 7)) * (ride ? 9 : 6), tl = flying ? 10 : ride ? 6 : 0;
+  const onRB = ride || lay;
+  const tw = Math.sin(T * (onRB ? 11 : 7)) * (onRB ? 9 : 6), tl = flying ? 10 : onRB ? 6 : 0;
   for (let i = 0; i < 6; i++) {
     X.strokeStyle = RB[i];
     X.lineWidth = 3.4; X.lineCap = "round";
@@ -598,7 +614,7 @@ const drawUni = (x, y, a, galloping, flying) => {
     X.strokeStyle = RB[i]; X.lineWidth = 3;
     X.beginPath();
     X.moveTo(12 - i * 0.5, -42 - i * 1.1);
-    X.quadraticCurveTo(16 - i * 2 + Math.sin(T * 6 + i) * (ride ? 4.5 : 2.5), -58 - i * 1.4, 24 - i * 2.3, -66 - i * 0.8);
+    X.quadraticCurveTo(16 - i * 2 + Math.sin(T * 6 + i) * (onRB ? 4.5 : 2.5), -58 - i * 1.4, 24 - i * 2.3, -66 - i * 0.8);
     X.stroke();
   }
   // forelock
@@ -696,7 +712,7 @@ const draw = () => {
   // solid segments batch into one path per band; only expiring ones pay per-segment strokes
   X.lineCap = "round"; X.lineJoin = "round";
   // the ribbon sags under the unicorn's weight while ridden
-  const dip = ride ? (x => 5 * Math.exp(-(x - px) * (x - px) / 1500)) : (x => 0);
+  const dip = ride || lay ? (x => 5 * Math.exp(-(x - px) * (x - px) / 1500)) : (x => 0);
   for (let band = 0; band < 6; band++) {
     X.strokeStyle = RB[band];
     X.lineWidth = TRAIL_W / 6 + 0.7;
@@ -730,7 +746,7 @@ const draw = () => {
     }
   }
   // hoofstrike glow while riding
-  if (ride && rideFlash > 0) {
+  if ((ride || lay) && rideFlash > 0) {
     X.globalAlpha = rideFlash * 0.45;
     X.fillStyle = "#fff";
     X.beginPath(); X.ellipse(px - 6, py + 3, 26, 8, 0, 0, TAU); X.fill();
@@ -747,20 +763,23 @@ const draw = () => {
   }
   X.globalAlpha = 1;
 
-  // paint head glow while beaming
-  if (state == 1 && hold && meter > 0 && !stun) {
-    const hx = px + 152, hy = py - 26;
-    // the rainbow streams out of the horn: 6 strands fanning from the horn tip into the ribbon
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    const hx0 = px + 36 * ca + 76 * sa, hy0 = py + 36 * sa - 76 * ca; // horn tip in world space
-    X.globalAlpha = 0.55;
-    X.lineWidth = 2.2;
-    for (let i = 0; i < 6; i++) {
-      X.strokeStyle = RB[i];
-      X.beginPath();
-      X.moveTo(hx0, hy0 + (i - 2.5) * 1.1);
-      X.quadraticCurveTo((hx0 + hx) / 2, Math.min(hy0, hy) - 26 + Math.sin(T * 9 + i) * 4, hx, hy + (i - 2.5) * (TRAIL_W / 6));
-      X.stroke();
+  // paint head: horn stream while casting, glow dot while the cast glides to its finish
+  const casting = state == 1 && hold && meter > 0 && !stun;
+  if (casting || (state == 1 && lay && runway > 0)) {
+    const hx = px + 30, hy = (casting ? py : runY) + 2;
+    if (casting) {
+      // the rainbow pours out of the horn, down to the road's leading edge
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const hx0 = px + 36 * ca + 76 * sa, hy0 = py + 36 * sa - 76 * ca; // horn tip in world space
+      X.globalAlpha = 0.55;
+      X.lineWidth = 2.2;
+      for (let i = 0; i < 6; i++) {
+        X.strokeStyle = RB[i];
+        X.beginPath();
+        X.moveTo(hx0, hy0 + (i - 2.5) * 1.1);
+        X.quadraticCurveTo(hx0 + 26 + Math.sin(T * 9 + i) * 3, hy0 + (hy - hy0) * 0.3, hx, hy + (i - 2.5) * (TRAIL_W / 6));
+        X.stroke();
+      }
     }
     X.globalAlpha = 0.35;
     X.fillStyle = RB[(T * 12 | 0) % 6];
@@ -883,8 +902,8 @@ const draw = () => {
   // tutorial hints on the first stretch
   if (state == 1 && dist < 2400) {
     X.globalAlpha = clamp(1 - (dist - 2000) / 400, 0, 0.9);
-    txt("HOLD — your horn paints a rainbow ahead", 620, 250, Math.min(24, VW * 0.05), "#fff");
-    txt("release to fall — RIDE what you painted!", 1300, 230, Math.min(22, VW * 0.045), "#fffc");
+    txt("HOLD — gallop up the rainbow you cast", 620, 250, Math.min(24, VW * 0.05), "#fff");
+    txt("release — it levels off... then it ends!", 1300, 230, Math.min(22, VW * 0.045), "#fffc");
     txt("grass & stars refill your rainbow", 2150, 250, Math.min(22, VW * 0.045), "#fffc");
     X.globalAlpha = 1;
   }
@@ -912,7 +931,7 @@ const draw = () => {
     }
     txt("RAINBOW", mx + 4, my + mh + 15, 11, "#ffffffbb", "left", 800);
     // score (gold while riding your rainbow)
-    txt((score | 0) + "", VW - 20, 44, 34, ride ? "#ffe74c" : "#fff", "right");
+    txt((score | 0) + "", VW - 20, 44, 34, ride || lay ? "#ffe74c" : "#fff", "right");
     txt("★ " + stars + (combo > 1 ? "   ×" + combo : ""), VW - 20, 70, 18, "#ffe74c", "right");
     txt((dist / 10 | 0) + "m", VW - 20, 92, 14, "#fffa", "right");
   }
@@ -936,10 +955,10 @@ const draw = () => {
     txt("tap / hold SPACE to play", tx, VH * 0.68, Math.min(24, VW * 0.075), "#fff");
     X.globalAlpha = 1;
     if (VW < 620) {
-      txt("HOLD = fly & paint · release = RIDE it", tx, VH * 0.86, 13, "#fffd");
+      txt("HOLD = ride your rainbow up", tx, VH * 0.86, 13, "#fffd");
       txt("catch ☆ · dodge clouds · M mute", tx, VH * 0.905, 12, "#fffb");
     } else {
-      txt("HOLD = fly & paint a rainbow ahead · release = fall · land on it to RIDE!", tx, VH * 0.86, 15, "#fffd");
+      txt("HOLD = ride the rainbow you cast, upward · release = it levels off, then ends!", tx, VH * 0.86, 15, "#fffd");
       txt("catch ☆ · dodge storm clouds · M = mute", tx, VH * 0.905, 14, "#fffb");
     }
     X.font = Math.min(12, VW * 0.037) + "px ui-monospace,Consolas,monospace";
@@ -980,7 +999,7 @@ const draw = () => {
 
 /*DBG*/
 if (location.hash == "#dbg") window.DBG = {
-  get: () => ({ state, px, py, vy, air, ride, meter, dist, score, combo, stars, trLen: tr.length }),
+  get: () => ({ state, px, py, vy, air, ride, lay, runway, meter, dist, score, combo, stars, trLen: tr.length }),
   groundAt: x => { const a = islandAt(x); return a ? gY(a, x) : -1 }
 };
 /*DBG-END*/
