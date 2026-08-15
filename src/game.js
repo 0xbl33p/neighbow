@@ -119,7 +119,7 @@ let runPh = 0, hoofFlip = 0, stars = 0, combo = 0, score = 0, shake = 0, deathT 
 let best = +(LS.nb_best || 0);
 let isl = [], star = [], cloud = [], tr = [], pp = [], pop = [];
 let genX = 0, strokeId = 0, emitX = 0, flashT = 0, newBest = 0, starBank = 0;
-let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0;
+let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0, rideFlash = 0;
 
 const FLY_DRAIN = 30, GRASS_REGEN = 26, RIDE_REGEN = 10, STAR_METER = 14;
 const FADE = 1.2, TRAIL_W = 17;
@@ -197,7 +197,7 @@ const reset = () => {
   px = 140; py = 250 + 340 * 0.19 + Math.sin(140 * 0.012) * 10; pyPrev = py; vy = 0;
   meter = 100; hold = 0; air = 0; ride = 1; rideI = 0; stun = 0; ang = 0;
   stars = 0; combo = 0; score = 0; shake = 0; mile = 0; newBest = 0; starBank = 0;
-  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0;
+  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0; rideFlash = 0;
 };
 reset();
 
@@ -253,7 +253,8 @@ const update = dt => {
   // difficulty / speed
   spd = 250 + Math.min(190, dist * 0.011);
   SD = 4.5 - Math.min(1.8, dist * 0.00004); // ribbons dry up faster the deeper you go
-  const mv = spd * dt;
+  const mv = spd * (ride ? 1.12 : 1) * dt; // riding the rainbow is faster than running
+  rideFlash = Math.max(0, rideFlash - dt * 5);
   stun = Math.max(0, stun - dt);
   flashT = Math.max(0, flashT - dt);
 
@@ -347,7 +348,7 @@ const update = dt => {
       if (b.s != a.s) break;
       if (px >= a.x && px <= b.x) {
         if (T - a.t > SD && a.s != -1) break;
-        py = lerp(a.y, b.y, (px - a.x) / (b.x - a.x));
+        py = lerp(a.y, b.y, (px - a.x) / (b.x - a.x)) + 4; // sink into the sagging ribbon
         ang = lerp(ang, Math.atan2(b.y - a.y, b.x - a.x), 0.3);
         ok = 1;
         break;
@@ -390,8 +391,15 @@ const update = dt => {
     runPh += dt * spd * 0.045;
     if ((old % PI) > (runPh % PI)) {
       hoofFlip ^= 1;
-      noise(0.045, 0.09, hoofFlip ? 1500 : 1100, 2);
-      if (Math.random() < 0.6) puff(px - 16, py, 2, ride ? RB[rnd(6) | 0] : "#d7c4a5", 40, 30, 2.5, 0.35);
+      if (ride) {
+        // hooves on rainbow ring like glass
+        tone(1250 + hoofFlip * 260, 0.1, "sine", 0.07);
+        rideFlash = 1;
+        puff(px - 16, py, 3, RB[rnd(6) | 0], 60, 40, 2.5, 0.4);
+      } else {
+        noise(0.045, 0.09, hoofFlip ? 1500 : 1100, 2);
+        if (Math.random() < 0.6) puff(px - 16, py, 2, "#d7c4a5", 40, 30, 2.5, 0.35);
+      }
     }
   }
 
@@ -526,8 +534,8 @@ const drawUni = (x, y, a, galloping, flying) => {
   const bob = galloping ? Math.sin(runPh * 2) * 2 : Math.sin(T * 3) * 1.5;
   X.translate(0, bob);
 
-  // tail — rainbow ribbons
-  const tw = Math.sin(T * 7) * 6, tl = flying ? 10 : 0;
+  // tail — rainbow ribbons (streams harder while riding)
+  const tw = Math.sin(T * (ride ? 11 : 7)) * (ride ? 9 : 6), tl = flying ? 10 : ride ? 6 : 0;
   for (let i = 0; i < 6; i++) {
     X.strokeStyle = RB[i];
     X.lineWidth = 3.4; X.lineCap = "round";
@@ -590,7 +598,7 @@ const drawUni = (x, y, a, galloping, flying) => {
     X.strokeStyle = RB[i]; X.lineWidth = 3;
     X.beginPath();
     X.moveTo(12 - i * 0.5, -42 - i * 1.1);
-    X.quadraticCurveTo(16 - i * 2 + Math.sin(T * 6 + i) * 2.5, -58 - i * 1.4, 24 - i * 2.3, -66 - i * 0.8);
+    X.quadraticCurveTo(16 - i * 2 + Math.sin(T * 6 + i) * (ride ? 4.5 : 2.5), -58 - i * 1.4, 24 - i * 2.3, -66 - i * 0.8);
     X.stroke();
   }
   // forelock
@@ -687,6 +695,8 @@ const draw = () => {
   // ---- painted rainbows ----
   // solid segments batch into one path per band; only expiring ones pay per-segment strokes
   X.lineCap = "round"; X.lineJoin = "round";
+  // the ribbon sags under the unicorn's weight while ridden
+  const dip = ride ? (x => 5 * Math.exp(-(x - px) * (x - px) / 1500)) : (x => 0);
   for (let band = 0; band < 6; band++) {
     X.strokeStyle = RB[band];
     X.lineWidth = TRAIL_W / 6 + 0.7;
@@ -700,8 +710,8 @@ const draw = () => {
       if (a.s != b.s || b.x < camX - 20 || a.x > camX + VW + 20) { pen = 0; continue; }
       const age = T - b.t;
       if (b.s == -1 || age < SD - 1) {
-        if (!pen) { X.moveTo(a.x, a.y + off); pen = 1; }
-        X.lineTo(b.x, b.y + off);
+        if (!pen) { X.moveTo(a.x, a.y + off + dip(a.x)); pen = 1; }
+        X.lineTo(b.x, b.y + off + dip(b.x));
       } else {
         pen = 0;
         if (age < SD + FADE) spec.push(i);
@@ -714,10 +724,17 @@ const draw = () => {
       const age = T - b.t;
       X.globalAlpha = age < SD ? 0.9 * (0.5 + 0.5 * Math.sin(T * 14)) : 0.9 * (1 - (age - SD) / FADE);
       X.beginPath();
-      X.moveTo(a.x, a.y + off);
-      X.lineTo(b.x, b.y + off);
+      X.moveTo(a.x, a.y + off + dip(a.x));
+      X.lineTo(b.x, b.y + off + dip(b.x));
       X.stroke();
     }
+  }
+  // hoofstrike glow while riding
+  if (ride && rideFlash > 0) {
+    X.globalAlpha = rideFlash * 0.45;
+    X.fillStyle = "#fff";
+    X.beginPath(); X.ellipse(px - 6, py + 3, 26, 8, 0, 0, TAU); X.fill();
+    X.globalAlpha = 1;
   }
   // fresh paint glints
   X.fillStyle = "#fff";
@@ -733,13 +750,18 @@ const draw = () => {
   // paint head glow while beaming
   if (state == 1 && hold && meter > 0 && !stun) {
     const hx = px + 152, hy = py - 26;
-    // the beam itself, horn to paint head — sells the causality
-    X.strokeStyle = "rgba(255,255,255,.25)";
-    X.lineWidth = 3;
-    X.beginPath();
-    X.moveTo(px + 25, py - 45);
-    X.quadraticCurveTo((px + 25 + hx) / 2, py - 58, hx, hy);
-    X.stroke();
+    // the rainbow streams out of the horn: 6 strands fanning from the horn tip into the ribbon
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const hx0 = px + 36 * ca + 76 * sa, hy0 = py + 36 * sa - 76 * ca; // horn tip in world space
+    X.globalAlpha = 0.55;
+    X.lineWidth = 2.2;
+    for (let i = 0; i < 6; i++) {
+      X.strokeStyle = RB[i];
+      X.beginPath();
+      X.moveTo(hx0, hy0 + (i - 2.5) * 1.1);
+      X.quadraticCurveTo((hx0 + hx) / 2, Math.min(hy0, hy) - 26 + Math.sin(T * 9 + i) * 4, hx, hy + (i - 2.5) * (TRAIL_W / 6));
+      X.stroke();
+    }
     X.globalAlpha = 0.35;
     X.fillStyle = RB[(T * 12 | 0) % 6];
     X.beginPath(); X.arc(hx, hy, 12, 0, TAU); X.fill();
