@@ -279,7 +279,7 @@ const update = dt => {
   if (lay && px - emitX > 12) {
     emitX = px;
     tr.push({ x: px + 30, y: py + 2, t: T, s: strokeId });
-    if (climbing) { runway = 380; runY = py; } // releasing coasts level from here
+    if (climbing) { runway = 210; runY = py; } // releasing coasts level from here, briefly
     else runway -= 12;
     // magic stream from horn down to the road's leading edge
     for (let k = 0; k < 2; k++) {
