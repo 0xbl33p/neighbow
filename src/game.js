@@ -230,6 +230,7 @@ const die = () => {
   puff(px, Math.min(py, VH - 20), 26, "#fff", 220, 120, 6, 1);
   for (let i = 0; i < 18; i++) puff(px, Math.min(py, VH - 20), 3, RB[i % 6], 260, 160, 5, 1.2);
   if (score > best) { best = score | 0; LS.nb_best = best; newBest = 1; }
+  if (window.nbScore) window.nbScore(score | 0); // optional host-page hook (arcade embeds)
   tone(500, 0.9, "triangle", 0.25, -420);
   noise(0.5, 0.2, 400, 1);
 };
@@ -1012,4 +1013,5 @@ const loop = now => {
   requestAnimationFrame(loop);
 };
 requestAnimationFrame(loop);
+if (window.nbReady) window.nbReady(); // optional host-page hook (arcade embeds)
 })();

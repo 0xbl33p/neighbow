@@ -35,6 +35,16 @@ mkdirSync("dist", { recursive: true });
 writeFileSync("dist/index.html", html);
 console.log("dist/index.html:", html.length, "bytes");
 
+// Bullpad Arcade wrapper — same game + their SDK; NOT part of the js13k zip
+const bullpad = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>NEIGHBOW</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{display:block;width:100vw;height:100vh;height:100dvh;touch-action:none;cursor:pointer}</style></head><body><canvas id="c"></canvas><script src="https://bullpad.fi/arcade/sdk.js"></script><script>
+let bp=null;
+window.nbScore=s=>{try{bp&&bp.submitScore(s)}catch(e){}};
+window.nbReady=()=>{try{bp&&bp.ready()}catch(e){}};
+(async()=>{try{bp=await BullpadArcade.connect({name:"NEIGHBOW"});bp.ready()}catch(e){/* standalone: no arcade frame, game runs fine without it */}})();
+</script><script>${packed}</script></body></html>`;
+writeFileSync("dist/bullpad.html", bullpad);
+console.log("dist/bullpad.html:", bullpad.length, "bytes (arcade embed, not in zip)");
+
 // zip via PowerShell (System.IO.Compression, Optimal deflate)
 execSync(`powershell -NoProfile -Command "if(Test-Path dist/game.zip){Remove-Item dist/game.zip}; Add-Type -A System.IO.Compression.FileSystem; $z=[System.IO.Compression.ZipFile]::Open((Resolve-Path dist).Path+'\\\\game.zip','Create'); [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Resolve-Path dist/index.html).Path,'index.html',[System.IO.Compression.CompressionLevel]::Optimal) | Out-Null; $z.Dispose(); (Get-Item dist/game.zip).Length"`, { stdio: "inherit" });
 const zipSize = readFileSync("dist/game.zip").length;
