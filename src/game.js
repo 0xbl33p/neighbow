@@ -119,7 +119,7 @@ let runPh = 0, hoofFlip = 0, stars = 0, combo = 0, score = 0, shake = 0, deathT 
 let best = +(LS.nb_best || 0);
 let isl = [], star = [], cloud = [], tr = [], pp = [], pop = [];
 let genX = 0, strokeId = 0, emitX = 0, flashT = 0, newBest = 0, starBank = 0;
-let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0, rideFlash = 0, runway = 0, runY = 0, lay = 0, lastW = 0;
+let SD = 4.5, slid = 0, mEmpty = 0, landT = -9, neighed = 0, rideFlash = 0, lay = 0, lastW = 0;
 
 const FLY_DRAIN = 30, GRASS_REGEN = 26, RIDE_REGEN = 10, STAR_METER = 14;
 const FADE = 1.2, TRAIL_W = 17;
@@ -197,7 +197,7 @@ const reset = () => {
   px = 140; py = 250 + 340 * 0.19 + Math.sin(140 * 0.012) * 10; pyPrev = py; vy = 0;
   meter = 100; hold = 0; air = 0; ride = 1; rideI = 0; stun = 0; ang = 0;
   stars = 0; combo = 0; score = 0; shake = 0; mile = 0; newBest = 0; starBank = 0;
-  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0; rideFlash = 0; runway = 0; runY = 0; lay = 0;
+  SD = 4.5; slid = 0; mEmpty = 0; landT = -9; neighed = 0; rideFlash = 0; lay = 0;
 };
 reset();
 
@@ -272,22 +272,20 @@ const update = dt => {
     py += vy * dt;
     meter -= FLY_DRAIN * dt;
   } else if (lay) {
-    if (runway > 0) { vy = 0; py = runY; meter = Math.min(100, meter + RIDE_REGEN * dt); } // coasting the level finish
-    else { lay = 0; air = 1; vy = 0; } // the rainbow ends beneath you
+    // finger off the button (or meter dry) — the rainbow ends right here
+    lay = 0; air = 1;
   }
   // lay the ribbon just ahead of the front hooves
   if (lay && px - emitX > 12) {
     emitX = px;
     tr.push({ x: px + 30, y: py + 2, t: T, s: strokeId });
-    if (climbing) { runway = 210; runY = py; } // releasing coasts level from here, briefly
-    else runway -= 12;
     // magic stream from horn down to the road's leading edge
     for (let k = 0; k < 2; k++) {
       const bt = rnd();
       pp.push({ x: px + 24 + rnd(12, -4), y: lerp(py - 46, py + 2, bt) + rnd(5, -5), vx: rnd(30, -10), vy: rnd(-20, -50), l: 0.3, m: 0, col: RB[rnd(6) | 0], sz: 2 });
     }
   }
-  if (!lay && !climbing && runway <= 0) { strokeId++; emitX = px - 999; } // sealed stroke never bridges
+  if (!lay) { strokeId++; emitX = px - 999; } // sealed stroke never bridges
   if (air) vy = Math.min(vy + 950 * dt, 560);
   if (meter <= 0) {
     meter = 0;
@@ -307,21 +305,21 @@ const update = dt => {
     const gy = wallIsl ? gY(wallIsl, nx) : 9e9;
     if (py > gy + 40) {
       // rode straight into a cliff face — the cast fizzles
-      ride = 0; lay = 0; runway = 0; strokeId++; emitX = px - 999; air = 1;
+      ride = 0; lay = 0; strokeId++; emitX = px - 999; air = 1;
       vy = Math.min(vy + 950 * dt, 560); py += vy * dt;
       if (!slid) { slid = 1; stun = 0.4; shake = 8; noise(0.15, 0.25, 300, 1); }
     } else {
       px = nx;
       if (py > gy - 6) {
         // the ribbon carried us onto grass — step off
-        ride = 0; lay = 0; air = 0; py = gy; vy = 0; slid = 0; landT = T; runway = 0;
+        ride = 0; lay = 0; air = 0; py = gy; vy = 0; slid = 0; landT = T;
         if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
         combo = 0;
       }
     }
   } else if (wallIsl && !air) {
     // grounded: just follow terrain
-    px = nx; py = gY(wallIsl, px); slid = 0; runway = 0;
+    px = nx; py = gY(wallIsl, px); slid = 0;
     meter = Math.min(100, meter + GRASS_REGEN * dt);
     if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
     combo = 0;
@@ -335,7 +333,7 @@ const update = dt => {
     } else if (py > gy - 8 && vy >= 0) {
       // touch down on grass (with a forgiving ledge boost)
       px = nx; py = gy; vy = 0;
-      air = 0; slid = 0; landT = T; runway = 0;
+      air = 0; slid = 0; landT = T;
       puff(px, py, 8, "#cfe8ff", 70, 40, 3, 0.4);
       noise(0.09, 0.18, 900, 1);
       if (combo > 1) popup(px, py - 90, "landed", "#fff9", 14);
@@ -455,7 +453,7 @@ const update = dt => {
       c.cd = 1.4; stun = 0.45; flashT = 0.25;
       meter = Math.max(0, meter - 35);
       vy = Math.max(vy, 160); air = 1; ride = 0; lay = 0;
-      runway = 0; strokeId++; emitX = px - 999; // the zap snuffs the cast
+      strokeId++; emitX = px - 999; // the zap snuffs the cast
       combo = 0;
       shake = 12;
       puff(px, py - 26, 14, "#ffe74c", 200, 0, 3, 0.4);
@@ -765,8 +763,8 @@ const draw = () => {
 
   // paint head: horn stream while casting, glow dot while the cast glides to its finish
   const casting = state == 1 && hold && meter > 0 && !stun;
-  if (casting || (state == 1 && lay && runway > 0)) {
-    const hx = px + 30, hy = (casting ? py : runY) + 2;
+  if (casting) {
+    const hx = px + 30, hy = py + 2;
     if (casting) {
       // the rainbow pours out of the horn, down to the road's leading edge
       const ca = Math.cos(ang), sa = Math.sin(ang);
@@ -903,7 +901,7 @@ const draw = () => {
   if (state == 1 && dist < 2400) {
     X.globalAlpha = clamp(1 - (dist - 2000) / 400, 0, 0.9);
     txt("HOLD — gallop up the rainbow you cast", 620, 250, Math.min(24, VW * 0.05), "#fff");
-    txt("release — it levels off... then it ends!", 1300, 230, Math.min(22, VW * 0.045), "#fffc");
+    txt("let go and the rainbow ends — you fall!", 1300, 230, Math.min(22, VW * 0.045), "#fffc");
     txt("grass & stars refill your rainbow", 2150, 250, Math.min(22, VW * 0.045), "#fffc");
     X.globalAlpha = 1;
   }
@@ -958,7 +956,7 @@ const draw = () => {
       txt("HOLD = ride your rainbow up", tx, VH * 0.86, 13, "#fffd");
       txt("catch ☆ · dodge clouds · M mute", tx, VH * 0.905, 12, "#fffb");
     } else {
-      txt("HOLD = ride the rainbow you cast, upward · release = it levels off, then ends!", tx, VH * 0.86, 15, "#fffd");
+      txt("HOLD = ride the rainbow you cast, upward · let go = it ends · refill on grass & ☆", tx, VH * 0.86, 15, "#fffd");
       txt("catch ☆ · dodge storm clouds · M = mute", tx, VH * 0.905, 14, "#fffb");
     }
     X.font = Math.min(12, VW * 0.037) + "px ui-monospace,Consolas,monospace";
@@ -999,7 +997,7 @@ const draw = () => {
 
 /*DBG*/
 if (location.hash == "#dbg") window.DBG = {
-  get: () => ({ state, px, py, vy, air, ride, lay, runway, meter, dist, score, combo, stars, trLen: tr.length }),
+  get: () => ({ state, px, py, vy, air, ride, lay, meter, dist, score, combo, stars, trLen: tr.length }),
   groundAt: x => { const a = islandAt(x); return a ? gY(a, x) : -1 }
 };
 /*DBG-END*/

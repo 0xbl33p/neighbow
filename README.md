@@ -8,12 +8,12 @@
 
 My entry for [js13kGames 2026](https://js13kgames.com/2026/) — theme: **Unicorns and Rainbows**.
 
-A one-button endless gallop. Your unicorn's horn casts a rainbow under its own hooves — hold to gallop **up** the rainbow as it forms, release and it levels off into a runway... and then it ends.
+A one-button endless gallop. Your unicorn's horn casts a rainbow under its own hooves — hold to gallop **up** the rainbow as it forms. Let go and the rainbow ends: you fall.
 
 ## How to play
 
-- **HOLD** (tap / click / `Space` / `↑` / `W`) — ride the rainbow your horn casts, climbing as long as you hold
-- **RELEASE** — the rainbow levels off and you keep riding (×2 star score) until it runs out beneath you
+- **HOLD** (tap / click / `Space` / `↑` / `W`) — ride the rainbow your horn casts, climbing as long as you hold (×2 star score while on a rainbow)
+- **LET GO** (or run the meter dry) — the rainbow ends and you fall
 - Casting drains your rainbow meter — refill it on grass or by catching **stars**; you can also land on rainbows you cast earlier
 - Star combos build while you stay off the grass — riding keeps the chain alive
 - Dodge the grumpy **storm clouds**, don't fall into the void
